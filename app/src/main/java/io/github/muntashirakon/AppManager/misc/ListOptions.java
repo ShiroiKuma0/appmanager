@@ -79,6 +79,7 @@ public abstract class ListOptions extends CapsuleBottomSheetDialogFragment {
     private ListOptionsViewModel mListOptionsViewModel;
 
     protected MaterialSpinner profileNameSpinner;
+    protected MaterialCheckBox profileNegateCheckbox;
     protected MaterialButton selectUserView;
 
     public void setListOptionActions(@Nullable ListOptionActions listOptionActions) {
@@ -107,6 +108,7 @@ public abstract class ListOptions extends CapsuleBottomSheetDialogFragment {
         mOptionsText = view.findViewById(R.id.options_text);
         mOptionsView = view.findViewById(R.id.options);
         profileNameSpinner = view.findViewById(R.id.spinner);
+        profileNegateCheckbox = view.findViewById(R.id.profile_negate);
         selectUserView = view.findViewById(R.id.user);
 
         init(false);
@@ -202,6 +204,7 @@ public abstract class ListOptions extends CapsuleBottomSheetDialogFragment {
         // Profile
         boolean profileEnabled = enableProfileNameInput();
         profileNameSpinner.setVisibility(profileEnabled ? View.VISIBLE : View.GONE);
+        profileNegateCheckbox.setVisibility(profileEnabled ? View.VISIBLE : View.GONE);
 
         // User
         boolean selectUserEnabled = enableSelectUser();
