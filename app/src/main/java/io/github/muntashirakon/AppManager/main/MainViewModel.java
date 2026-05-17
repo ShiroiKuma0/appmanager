@@ -89,6 +89,7 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
     private int mFilterFlags;
     @Nullable
     private String mFilterProfileName;
+    private boolean mFilterProfileNegate;
     @Nullable
     private int[] mSelectedUsers;
     private String mSearchQuery;
@@ -107,6 +108,7 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
         mReverseSort = Prefs.MainPage.isReverseSort();
         mFilterFlags = Prefs.MainPage.getFilters();
         mFilterProfileName = Prefs.MainPage.getFilteredProfileName();
+        mFilterProfileNegate = Prefs.MainPage.getFilteredProfileNegate();
         mSelectedUsers = null; // TODO: 5/6/23 Load from prefs?
         if ("".equals(mFilterProfileName)) mFilterProfileName = null;
     }
@@ -293,6 +295,18 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
         return mFilterProfileName;
     }
 
+    public void setFilterProfileNegate(boolean negate) {
+        if (mFilterProfileNegate == negate) return;
+        mFilterProfileNegate = negate;
+        Prefs.MainPage.setFilteredProfileNegate(negate);
+        cancelIfRunning();
+        mFilterResult = executor.submit(this::filterItemsByFlags);
+    }
+
+    public boolean getFilterProfileNegate() {
+        return mFilterProfileNegate;
+    }
+
     public void setSelectedUsers(@Nullable int[] selectedUsers) {
         if (selectedUsers == null) {
             if (mSelectedUsers == null) {
@@ -417,21 +431,27 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
         synchronized (mApplicationItems) {
             List<ApplicationItem> candidateApplicationItems = new ArrayList<>();
             List<FilterOption> profileFilterOptions = new ArrayList<>();
+            AppsProfile resolvedAppsProfile = null;
+            AppsFilterProfile resolvedAppsFilterProfile = null;
             if (mFilterProfileName != null) {
                 String profileId = ProfileManager.getProfileIdCompat(mFilterProfileName);
                 Path profilePath = ProfileManager.findProfilePathById(profileId);
                 try {
                     BaseProfile profile = BaseProfile.fromPath(profilePath);
                     if (profile instanceof AppsProfile) {
-                        AppsProfile appsProfile = (AppsProfile) profile;
-                        PackageNameOption option = new PackageNameOption();
-                        option.setKeyValue("eq_any", TextUtils.join("\n", appsProfile.packages));
-                        profileFilterOptions.add(option);
+                        resolvedAppsProfile = (AppsProfile) profile;
+                        if (!mFilterProfileNegate) {
+                            PackageNameOption option = new PackageNameOption();
+                            option.setKeyValue("eq_any", TextUtils.join("\n", resolvedAppsProfile.packages));
+                            profileFilterOptions.add(option);
+                        }
                     } else if (profile instanceof AppsFilterProfile) {
-                        AppsFilterProfile filterProfile = (AppsFilterProfile) profile;
-                        FilterItem filterItem = filterProfile.getFilterItem();
-                        for (int i = 0; i < filterItem.getSize(); ++i) {
-                            profileFilterOptions.add(filterItem.getFilterOptionAt(i));
+                        resolvedAppsFilterProfile = (AppsFilterProfile) profile;
+                        if (!mFilterProfileNegate) {
+                            FilterItem filterItem = resolvedAppsFilterProfile.getFilterItem();
+                            for (int i = 0; i < filterItem.getSize(); ++i) {
+                                profileFilterOptions.add(filterItem.getFilterOptionAt(i));
+                            }
                         }
                     }
                 } catch (IOException | JSONException e) {
@@ -446,8 +466,23 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
                     candidateApplicationItems.add(item);
                 }
             }
+            // Compute exclude-package set for negate mode (after candidates are built — needed for AppsFilterProfile)
+            HashSet<String> excludePackages = null;
+            if (mFilterProfileNegate && mFilterProfileName != null) {
+                excludePackages = new HashSet<>();
+                if (resolvedAppsProfile != null) {
+                    Collections.addAll(excludePackages, resolvedAppsProfile.packages);
+                } else if (resolvedAppsFilterProfile != null) {
+                    FilterItem profileFilter = resolvedAppsFilterProfile.getFilterItem();
+                    List<FilterItem.FilteredItemInfo<ApplicationItem>> matched = profileFilter.getFilteredList(candidateApplicationItems);
+                    for (FilterItem.FilteredItemInfo<ApplicationItem> m : matched) {
+                        excludePackages.add(m.info.packageName);
+                    }
+                }
+            }
             // Other filters
-            if (profileFilterOptions.isEmpty() && mFilterFlags == MainListOptions.FILTER_NO_FILTER) {
+            boolean hasExclusion = excludePackages != null && !excludePackages.isEmpty();
+            if (profileFilterOptions.isEmpty() && !hasExclusion && mFilterFlags == MainListOptions.FILTER_NO_FILTER) {
                 if (!TextUtils.isEmpty(mSearchQuery)) {
                     filterItemsByQuery(candidateApplicationItems);
                 } else {
@@ -503,6 +538,9 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
                 }
                 List<FilterItem.FilteredItemInfo<ApplicationItem>> result = filterItem.getFilteredList(candidateApplicationItems);
                 for (FilterItem.FilteredItemInfo<ApplicationItem> item : result) {
+                    if (excludePackages != null && excludePackages.contains(item.info.packageName)) {
+                        continue;
+                    }
                     if ((mFilterFlags & MainListOptions.FILTER_APPS_WITH_SPLITS) != 0 && !item.info.hasSplits) {
                         continue;
                     }
