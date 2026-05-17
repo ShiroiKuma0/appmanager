@@ -44,16 +44,23 @@ interface InjectedExecOps {
 android.libraryVariants.configureEach { variant ->
     String buildType = variant.buildType.name
     def injected = project.objects.newInstance(InjectedExecOps)
+    // Capture project/android references at configuration time (configuration-cache requirement
+    // — Task.project / android.* access at execution time is forbidden).
+    String capturedRootDir = project.rootDir.absolutePath
+    File capturedRootDirFile = project.rootDir
+    String capturedSdkDirPath = android.sdkDirectory.path
+    String capturedBuildToolsVersion = android.buildToolsVersion
+    int capturedTargetSdk = target_sdk
     def jarTask = tasks.register("create${buildType.capitalize()}ServerJars") {
         doLast {
             println("Build type: ${buildType}")
 
-            String rootDir = project.rootDir.absolutePath
+            String rootDir = capturedRootDir
             String serverPkg = "io/github/muntashirakon/AppManager/server"
             String intermediatePath = "build/intermediates/javac/${buildType}/compile${buildType.capitalize()}JavaWithJavac/classes"
             String serverClassDir = "${rootDir}/server/${intermediatePath}/${serverPkg}/"
             String libserverClassDir = "${rootDir}/libserver/${intermediatePath}/${serverPkg}/common"
-            String androidJar = "${android.sdkDirectory.path}/platforms/android-${target_sdk}/android.jar"
+            String androidJar = "${capturedSdkDirPath}/platforms/android-${capturedTargetSdk}/android.jar"
             String amJar = "${rootDir}/app/src/main/assets/am.jar"
             String mainJar = "${rootDir}/app/src/main/assets/main.jar"
 
@@ -66,8 +73,8 @@ android.libraryVariants.configureEach { variant ->
                 !it.fileName.toString().startsWith("RootServiceMain")
             }.map { it.toString() }.collect(Collectors.toList()))
             injected.execOps.exec {
-                workingDir = project.rootDir
-                executable = file("${android.sdkDirectory.path}/build-tools/${android.buildToolsVersion}/d8")
+                workingDir = capturedRootDirFile
+                executable = new File("${capturedSdkDirPath}/build-tools/${capturedBuildToolsVersion}/d8")
                 args = buildArgs
             }
             println("Created ${amJar}")
@@ -81,8 +88,8 @@ android.libraryVariants.configureEach { variant ->
                 it.fileName.toString().startsWith("RootServiceMain")
             }.map { it.toString() }.collect(Collectors.toList()))
             injected.execOps.exec {
-                workingDir = project.rootDir
-                executable = file("${android.sdkDirectory.path}/build-tools/${android.buildToolsVersion}/d8")
+                workingDir = capturedRootDirFile
+                executable = new File("${capturedSdkDirPath}/build-tools/${capturedBuildToolsVersion}/d8")
                 args = buildArgs
             }
             println("Created ${mainJar}")
@@ -91,10 +98,12 @@ android.libraryVariants.configureEach { variant ->
     javaCompileProvider.get().finalizedBy(jarTask)
 }
 
+// Capture rootProject.projectDir at config time for the cleanup task (configuration-cache).
+String capturedRootProjectDir = rootProject.projectDir.absolutePath
 tasks.register('cleanupServerJars') {
     doLast {
-        file("${rootProject.projectDir.absolutePath}/app/src/main/assets/am.jar").delete()
-        file("${rootProject.projectDir.absolutePath}/app/src/main/assets/main.jar").delete()
+        new File("${capturedRootProjectDir}/app/src/main/assets/am.jar").delete()
+        new File("${capturedRootProjectDir}/app/src/main/assets/main.jar").delete()
     }
 }
 
