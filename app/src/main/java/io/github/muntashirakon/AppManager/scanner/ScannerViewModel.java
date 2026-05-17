@@ -365,9 +365,7 @@ public class ScannerViewModel extends AndroidViewModel implements VirusTotal.Ful
         }
         mLibraryClassesLiveData.postValue(libraryInfoList);
 
-        if (BuildConfig.DEBUG) {
-            mMissingClassesLiveData.postValue(missingLibs);
-        }
+        mMissingClassesLiveData.postValue(missingLibs);
     }
 
     @WorkerThread
