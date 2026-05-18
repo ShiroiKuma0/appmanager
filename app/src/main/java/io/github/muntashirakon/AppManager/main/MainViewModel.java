@@ -35,6 +35,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -88,9 +89,20 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
     private boolean mReverseSort;
     @MainListOptions.Filter
     private int mFilterFlags;
-    @Nullable
-    private String mFilterProfileName;
-    private boolean mFilterProfileNegate;
+    /**
+     * Profiles whose packages an app MUST belong to in order to pass the filter.
+     * Empty set means "no include constraint". Multiple entries are ANDed
+     * (intersection) — the app must be in all listed profiles.
+     */
+    @NonNull
+    private final LinkedHashSet<String> mProfileFiltersInclude = new LinkedHashSet<>();
+    /**
+     * Profiles whose packages an app MUST NOT belong to. Empty set means "no
+     * exclude constraint". Multiple entries are unioned for the exclusion set
+     * — the app is rejected if it's in any of the listed profiles.
+     */
+    @NonNull
+    private final LinkedHashSet<String> mProfileFiltersExclude = new LinkedHashSet<>();
     @Nullable
     private int[] mSelectedUsers;
     private String mSearchQuery;
@@ -100,6 +112,11 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
     private final Map<String, ApplicationItem> mSelectedPackageApplicationItemMap = Collections.synchronizedMap(new LinkedHashMap<>());
     final MultithreadedExecutor executor = MultithreadedExecutor.getNewInstance();
 
+    /** SharedPreferences file holding the multi-profile filter state. */
+    private static final String PREFS_PROFILE_FILTER = "am_main_page_profile_filter";
+    private static final String PREF_KEY_INCLUDE = "include";
+    private static final String PREF_KEY_EXCLUDE = "exclude";
+
     public MainViewModel(@NonNull Application application) {
         super(application);
         Log.d("MVM", "New instance created");
@@ -108,10 +125,35 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
         mSortBy = Prefs.MainPage.getSortOrder();
         mReverseSort = Prefs.MainPage.isReverseSort();
         mFilterFlags = Prefs.MainPage.getFilters();
-        mFilterProfileName = Prefs.MainPage.getFilteredProfileName();
-        mFilterProfileNegate = Prefs.MainPage.getFilteredProfileNegate();
+        // Load multi-profile filter state from our own SharedPreferences file
+        // (kept separate from libcore Prefs.MainPage so we don't have to thread
+        // new keys through that class). Sorted alphabetically on load so the
+        // iteration order is deterministic across runs - getStringSet does not
+        // preserve insertion order.
+        android.content.SharedPreferences sp = application.getSharedPreferences(
+                PREFS_PROFILE_FILTER, android.content.Context.MODE_PRIVATE);
+        List<String> includeLoad = new ArrayList<>(sp.getStringSet(
+                PREF_KEY_INCLUDE, Collections.emptySet()));
+        List<String> excludeLoad = new ArrayList<>(sp.getStringSet(
+                PREF_KEY_EXCLUDE, Collections.emptySet()));
+        Collections.sort(includeLoad);
+        Collections.sort(excludeLoad);
+        mProfileFiltersInclude.addAll(includeLoad);
+        mProfileFiltersExclude.addAll(excludeLoad);
+        // Legacy migration: if our new prefs are empty but the upstream
+        // single-profile pref has a value, move it across so the user does
+        // not lose a filter they set under the old UI.
+        if (mProfileFiltersInclude.isEmpty() && mProfileFiltersExclude.isEmpty()) {
+            String legacyName = Prefs.MainPage.getFilteredProfileName();
+            if (legacyName != null && !legacyName.isEmpty()) {
+                if (Prefs.MainPage.getFilteredProfileNegate()) {
+                    mProfileFiltersExclude.add(legacyName);
+                } else {
+                    mProfileFiltersInclude.add(legacyName);
+                }
+            }
+        }
         mSelectedUsers = null; // TODO: 5/6/23 Load from prefs?
-        if ("".equals(mFilterProfileName)) mFilterProfileName = null;
     }
 
     private final MutableLiveData<Boolean> mOperationStatus = new MutableLiveData<>();
@@ -281,31 +323,107 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
         mFilterResult = executor.submit(this::filterItemsByFlags);
     }
 
-    public void setFilterProfileName(@Nullable String filterProfileName) {
-        if (mFilterProfileName == null) {
-            if (filterProfileName == null) return;
-        } else if (mFilterProfileName.equals(filterProfileName)) return;
-        mFilterProfileName = filterProfileName;
-        Prefs.MainPage.setFilteredProfileName(filterProfileName);
+    /**
+     * Replace the entire profile filter with the given include and exclude
+     * sets. The filter pipeline ANDs all include profiles (intersection) and
+     * subtracts the union of all exclude profiles' packages from the result.
+     * Persists to SharedPreferences and re-runs the filter on a background
+     * thread.
+     */
+    public void setProfileFilters(@NonNull java.util.Set<String> include,
+                                  @NonNull java.util.Set<String> exclude) {
+        if (mProfileFiltersInclude.equals(include) && mProfileFiltersExclude.equals(exclude)) {
+            return;
+        }
+        mProfileFiltersInclude.clear();
+        mProfileFiltersInclude.addAll(include);
+        mProfileFiltersExclude.clear();
+        mProfileFiltersExclude.addAll(exclude);
+        android.content.SharedPreferences sp = getApplication().getSharedPreferences(
+                PREFS_PROFILE_FILTER, android.content.Context.MODE_PRIVATE);
+        sp.edit()
+                .putStringSet(PREF_KEY_INCLUDE, new HashSet<>(mProfileFiltersInclude))
+                .putStringSet(PREF_KEY_EXCLUDE, new HashSet<>(mProfileFiltersExclude))
+                .apply();
         cancelIfRunning();
         mFilterResult = executor.submit(this::filterItemsByFlags);
     }
 
+    @NonNull
+    public java.util.Set<String> getProfileFiltersInclude() {
+        return Collections.unmodifiableSet(mProfileFiltersInclude);
+    }
+
+    @NonNull
+    public java.util.Set<String> getProfileFiltersExclude() {
+        return Collections.unmodifiableSet(mProfileFiltersExclude);
+    }
+
+    public boolean hasProfileFilters() {
+        return !mProfileFiltersInclude.isEmpty() || !mProfileFiltersExclude.isEmpty();
+    }
+
+    /**
+     * Backward-compat shim for the original single-profile API. Used by the
+     * pill click and pill long-click handlers in MainRecyclerAdapter, and by
+     * any caller predating the multi-profile filter. Replaces the entire
+     * filter with this one profile in the include set (or clears the filter
+     * if name is null).
+     */
+    public void setFilterProfileName(@Nullable String filterProfileName) {
+        java.util.Set<String> include = new LinkedHashSet<>();
+        java.util.Set<String> exclude = new LinkedHashSet<>();
+        if (filterProfileName != null) {
+            include.add(filterProfileName);
+        }
+        setProfileFilters(include, exclude);
+    }
+
+    /**
+     * Backward-compat shim. Returns the first include profile, or the first
+     * exclude profile, or null if no filter is active. Callers use it as a
+     * boolean "filter active?" check (via != null), which is preserved.
+     */
     @Nullable
     public String getFilterProfileName() {
-        return mFilterProfileName;
+        if (!mProfileFiltersInclude.isEmpty()) {
+            return mProfileFiltersInclude.iterator().next();
+        }
+        if (!mProfileFiltersExclude.isEmpty()) {
+            return mProfileFiltersExclude.iterator().next();
+        }
+        return null;
     }
 
+    /**
+     * Backward-compat shim. Only does anything if there's exactly one profile
+     * in the filter — flips it between include and exclude. With multiple
+     * profiles the call is ignored because there's no single polarity to
+     * meaningfully toggle.
+     */
     public void setFilterProfileNegate(boolean negate) {
-        if (mFilterProfileNegate == negate) return;
-        mFilterProfileNegate = negate;
-        Prefs.MainPage.setFilteredProfileNegate(negate);
-        cancelIfRunning();
-        mFilterResult = executor.submit(this::filterItemsByFlags);
+        int total = mProfileFiltersInclude.size() + mProfileFiltersExclude.size();
+        if (total != 1) return;
+        String profile;
+        if (!mProfileFiltersInclude.isEmpty()) {
+            if (!negate) return;
+            profile = mProfileFiltersInclude.iterator().next();
+            java.util.Set<String> empty = Collections.emptySet();
+            java.util.Set<String> just = new LinkedHashSet<>();
+            just.add(profile);
+            setProfileFilters(empty, just);
+        } else {
+            if (negate) return;
+            profile = mProfileFiltersExclude.iterator().next();
+            java.util.Set<String> just = new LinkedHashSet<>();
+            just.add(profile);
+            java.util.Set<String> empty = Collections.emptySet();
+            setProfileFilters(just, empty);
+        }
     }
 
     public boolean getFilterProfileNegate() {
-        return mFilterProfileNegate;
+        return mProfileFiltersInclude.isEmpty() && !mProfileFiltersExclude.isEmpty();
     }
 
     public void setSelectedUsers(@Nullable int[] selectedUsers) {
@@ -432,33 +550,61 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
         synchronized (mApplicationItems) {
             List<ApplicationItem> candidateApplicationItems = new ArrayList<>();
             List<FilterOption> profileFilterOptions = new ArrayList<>();
-            AppsProfile resolvedAppsProfile = null;
-            AppsFilterProfile resolvedAppsFilterProfile = null;
-            if (mFilterProfileName != null) {
-                String profileId = ProfileManager.getProfileIdCompat(mFilterProfileName);
+            // Track AppsFilterProfile exclusions separately because they need
+            // the candidate list to compute their matched-package set; we
+            // resolve them after candidateApplicationItems is built below.
+            List<AppsFilterProfile> excludeAppsFilterProfiles = new ArrayList<>();
+            HashSet<String> excludePackages = new HashSet<>();
+
+            // Resolve every include profile. AppsProfile -> add a
+            // PackageNameOption "eq_any" with that profile's package list;
+            // multiple PackageNameOptions in the same FilterItem are ANDed,
+            // giving the intersection semantics the user asked for. An
+            // AppsFilterProfile contributes its own filter options the same
+            // way - again ANDed against everything else.
+            for (String includeName : mProfileFiltersInclude) {
+                String profileId = ProfileManager.getProfileIdCompat(includeName);
                 Path profilePath = ProfileManager.findProfilePathById(profileId);
+                if (profilePath == null) continue;
                 try {
                     BaseProfile profile = BaseProfile.fromPath(profilePath);
                     if (profile instanceof AppsProfile) {
-                        resolvedAppsProfile = (AppsProfile) profile;
-                        if (!mFilterProfileNegate) {
-                            PackageNameOption option = new PackageNameOption();
-                            option.setKeyValue("eq_any", TextUtils.join("\n", resolvedAppsProfile.packages));
-                            profileFilterOptions.add(option);
-                        }
+                        AppsProfile appsProfile = (AppsProfile) profile;
+                        PackageNameOption option = new PackageNameOption();
+                        option.setKeyValue("eq_any", TextUtils.join("\n", appsProfile.packages));
+                        profileFilterOptions.add(option);
                     } else if (profile instanceof AppsFilterProfile) {
-                        resolvedAppsFilterProfile = (AppsFilterProfile) profile;
-                        if (!mFilterProfileNegate) {
-                            FilterItem filterItem = resolvedAppsFilterProfile.getFilterItem();
-                            for (int i = 0; i < filterItem.getSize(); ++i) {
-                                profileFilterOptions.add(filterItem.getFilterOptionAt(i));
-                            }
+                        AppsFilterProfile filterProfile = (AppsFilterProfile) profile;
+                        FilterItem filterItem = filterProfile.getFilterItem();
+                        for (int i = 0; i < filterItem.getSize(); ++i) {
+                            profileFilterOptions.add(filterItem.getFilterOptionAt(i));
                         }
                     }
                 } catch (IOException | JSONException e) {
                     e.printStackTrace();
                 }
             }
+
+            // Resolve every exclude profile. AppsProfile -> union its
+            // packages into excludePackages directly. AppsFilterProfile is
+            // deferred because its matched packages depend on the candidate
+            // set (built right below).
+            for (String excludeName : mProfileFiltersExclude) {
+                String profileId = ProfileManager.getProfileIdCompat(excludeName);
+                Path profilePath = ProfileManager.findProfilePathById(profileId);
+                if (profilePath == null) continue;
+                try {
+                    BaseProfile profile = BaseProfile.fromPath(profilePath);
+                    if (profile instanceof AppsProfile) {
+                        Collections.addAll(excludePackages, ((AppsProfile) profile).packages);
+                    } else if (profile instanceof AppsFilterProfile) {
+                        excludeAppsFilterProfiles.add((AppsFilterProfile) profile);
+                    }
+                } catch (IOException | JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+
             for (ApplicationItem item : mApplicationItems) {
                 if (ThreadUtils.isInterrupted()) {
                     return;
@@ -467,22 +613,20 @@ public class MainViewModel extends AndroidViewModel implements ListOptions.ListO
                     candidateApplicationItems.add(item);
                 }
             }
-            // Compute exclude-package set for negate mode (after candidates are built — needed for AppsFilterProfile)
-            HashSet<String> excludePackages = null;
-            if (mFilterProfileNegate && mFilterProfileName != null) {
-                excludePackages = new HashSet<>();
-                if (resolvedAppsProfile != null) {
-                    Collections.addAll(excludePackages, resolvedAppsProfile.packages);
-                } else if (resolvedAppsFilterProfile != null) {
-                    FilterItem profileFilter = resolvedAppsFilterProfile.getFilterItem();
-                    List<FilterItem.FilteredItemInfo<ApplicationItem>> matched = profileFilter.getFilteredList(candidateApplicationItems);
-                    for (FilterItem.FilteredItemInfo<ApplicationItem> m : matched) {
-                        excludePackages.add(m.info.packageName);
-                    }
+
+            // Now resolve any deferred AppsFilterProfile exclusions against
+            // the candidate set.
+            for (AppsFilterProfile filterProfile : excludeAppsFilterProfiles) {
+                FilterItem profileFilter = filterProfile.getFilterItem();
+                List<FilterItem.FilteredItemInfo<ApplicationItem>> matched =
+                        profileFilter.getFilteredList(candidateApplicationItems);
+                for (FilterItem.FilteredItemInfo<ApplicationItem> m : matched) {
+                    excludePackages.add(m.info.packageName);
                 }
             }
+
             // Other filters
-            boolean hasExclusion = excludePackages != null && !excludePackages.isEmpty();
+            boolean hasExclusion = !excludePackages.isEmpty();
             if (profileFilterOptions.isEmpty() && !hasExclusion && mFilterFlags == MainListOptions.FILTER_NO_FILTER) {
                 if (!TextUtils.isEmpty(mSearchQuery)) {
                     filterItemsByQuery(candidateApplicationItems);
