@@ -2,4 +2,13 @@
 <resources>
     <color name="fm_icon_background">@color/m3_sys_color_light_on_surface_variant</color>
     <color name="fm_symbolic_link">#f37785</color>
+
+    <!-- Main-screen theme palette (custom fork). Subjective values for
+         shades 'muted yellow' / grey / 'greyish orange' / screen-bg grey
+         live here so they can be tweaked in one place. -->
+    <color name="theme_bright_yellow">#FFFF00</color>
+    <color name="theme_muted_yellow">#B8B800</color>
+    <color name="theme_label_frozen_user">#888888</color>
+    <color name="theme_label_frozen_system">#A07A5A</color>
+    <color name="theme_screen_bg">#1F1F1F</color>
 </resources>
