@@ -7,6 +7,12 @@
         app:title="@string/pref_default_freezing_method"
         app:iconSpaceReserved="false" />
 
+    <SwitchPreferenceCompat
+        app:key="skip_freeze_method_dialog"
+        app:title="@string/pref_skip_freeze_method_dialog"
+        app:summary="@string/pref_skip_freeze_method_dialog_description"
+        app:iconSpaceReserved="false" />
+
     <Preference
         app:key="default_blocking_method"
         app:title="@string/pref_default_blocking_method"
