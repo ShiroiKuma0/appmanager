@@ -122,7 +122,7 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
         super();
         mActivity = activity;
         mColorGreen = ContextCompat.getColor(activity, io.github.muntashirakon.ui.R.color.stopped);
-        mColorOrange = ContextCompat.getColor(activity, io.github.muntashirakon.ui.R.color.orange);
+        mColorOrange = ContextCompat.getColor(activity, R.color.theme_bright_orange);
         mColorPrimary = ContextCompat.getColor(activity, io.github.muntashirakon.ui.R.color.textColorPrimary);
         mColorSecondary = ContextCompat.getColor(activity, io.github.muntashirakon.ui.R.color.textColorSecondary);
         mQueryStringHighlight = ColorCodes.getQueryStringHighlightColor(activity);
@@ -441,10 +441,12 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
             // Highlight searched query
             holder.packageName.setText(UIUtils.getHighlightedText(item.packageName, mSearchQuery, mQueryStringHighlight));
         } else holder.packageName.setText(item.packageName);
-        // Set package name color to orange if the app has known tracker components
+        // Set package name (app ID) colour: bright orange if the app has
+        // known tracker components (same orange as system-app labels), else
+        // yellow.
         if (item.trackerCount > 0) {
-            holder.packageName.setTextColor(ColorCodes.getComponentTrackerIndicatorColor(context));
-        } else holder.packageName.setTextColor(mColorSecondary);
+            holder.packageName.setTextColor(mColorOrange);
+        } else holder.packageName.setTextColor(mColorYellow);
         FontUtil.apply(holder.packageName, FontPrefs.PACKAGE);
         // Populate profile-membership pills (these sit where the cert issuer
         // and backup info text used to live). Each pill is a Chip styled as
