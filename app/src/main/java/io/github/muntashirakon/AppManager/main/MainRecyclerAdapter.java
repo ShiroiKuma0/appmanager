@@ -210,6 +210,23 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
         }
     }
 
+    /**
+     * Snapshot of the package names currently shown in the list, in display
+     * order (i.e. after search + all active filters). Used by the toolbar
+     * "copy displayed app IDs" action.
+     */
+    @GuardedBy("mAdapterList")
+    @NonNull
+    public List<String> getDisplayedPackageNames() {
+        synchronized (mAdapterList) {
+            List<String> out = new ArrayList<>(mAdapterList.size());
+            for (ApplicationItem item : mAdapterList) {
+                out.add(item.packageName);
+            }
+            return out;
+        }
+    }
+
     @GuardedBy("mAdapterList")
     @Override
     public void cancelSelection() {
