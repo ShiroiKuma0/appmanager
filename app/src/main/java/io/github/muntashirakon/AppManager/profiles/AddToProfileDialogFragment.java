@@ -22,7 +22,10 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.github.muntashirakon.AppManager.R;
+import io.github.muntashirakon.AppManager.logs.Log;
 import io.github.muntashirakon.AppManager.profiles.struct.AppsProfile;
+import io.github.muntashirakon.AppManager.profiles.struct.BaseProfile;
+import io.github.muntashirakon.AppManager.utils.ArrayUtils;
 import io.github.muntashirakon.AppManager.utils.ExUtils;
 import io.github.muntashirakon.AppManager.utils.ThreadUtils;
 import io.github.muntashirakon.AppManager.utils.UIUtils;
@@ -78,26 +81,40 @@ public class AddToProfileDialogFragment extends DialogFragment {
                 .setTitle(titleBuilder.build())
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.add, (dialog, which, selectedItems) -> ThreadUtils.postOnBackgroundThread(() -> {
-                    boolean isSuccess = true;
-                    for (AppsProfile profile : selectedItems) {
-                        Path profilePath = ProfileManager.findProfilePathById(profile.profileId);
-                        if (profilePath == null) {
-                            isSuccess = false;
-                            continue;
-                        }
-                        try (OutputStream os = profilePath.openOutputStream()) {
+                    boolean isSuccess = !selectedItems.isEmpty();
+                    for (AppsProfile selected : selectedItems) {
+                        try {
+                            // Resolve the profile's actual file by its stored id (not just its
+                            // canonical name) and reload it fresh, so the append always lands in
+                            // the real profile rather than a stale object or a wrongly-named file.
+                            Path profilePath = ProfileManager.resolveExistingProfilePath(selected.profileId);
+                            if (profilePath == null) {
+                                isSuccess = false;
+                                continue;
+                            }
+                            AppsProfile profile = (AppsProfile) BaseProfile.fromPath(profilePath);
                             profile.appendPackages(packages);
-                            profile.write(os);
+                            try (OutputStream os = profilePath.openOutputStream()) {
+                                profile.write(os);
+                            }
+                            // Verify the packages actually persisted before claiming success.
+                            AppsProfile reloaded = (AppsProfile) BaseProfile.fromPath(profilePath);
+                            for (String pkg : packages) {
+                                if (!ArrayUtils.contains(reloaded.packages, pkg)) {
+                                    isSuccess = false;
+                                    break;
+                                }
+                            }
                         } catch (Throwable e) {
                             isSuccess = false;
-                            e.printStackTrace();
+                            Log.e(TAG, "Failed to add packages to profile " + selected.profileId, e);
                         }
                     }
-                    if (isSuccess) {
-                        ThreadUtils.postOnMainThread(() -> UIUtils.displayShortToast(R.string.done));
-                    } else {
-                        ThreadUtils.postOnMainThread(() -> UIUtils.displayShortToast(R.string.failed));
-                    }
+                    // Membership of the protected "必要" profile may have changed.
+                    ProtectedAppsProfile.invalidate();
+                    boolean finalSuccess = isSuccess;
+                    ThreadUtils.postOnMainThread(() -> UIUtils.displayShortToast(
+                            finalSuccess ? R.string.done : R.string.failed));
                 }))
                 .create();
         dialogRef.set(alertDialog);
