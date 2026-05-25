@@ -62,6 +62,7 @@ import io.github.muntashirakon.AppManager.details.AppDetailsActivity;
 import io.github.muntashirakon.AppManager.logs.Log;
 import io.github.muntashirakon.AppManager.profiles.AddToProfileDialogFragment;
 import io.github.muntashirakon.AppManager.profiles.ProfileManager;
+import io.github.muntashirakon.AppManager.profiles.ProtectedAppsProfile;
 import io.github.muntashirakon.AppManager.profiles.struct.AppsProfile;
 import io.github.muntashirakon.AppManager.profiles.struct.BaseProfile;
 import io.github.muntashirakon.AppManager.self.SelfPermissions;
@@ -942,6 +943,11 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
                 if (wasFrozen) {
                     FreezeUtils.unfreeze(item.packageName, userId);
                 } else {
+                    if (ProtectedAppsProfile.isProtected(item.packageName)) {
+                        ThreadUtils.postOnMainThread(() -> displayLongToast(
+                                R.string.protected_profile_block, item.label));
+                        return;
+                    }
                     FreezeUtils.freeze(item.packageName, userId,
                             Prefs.Blocking.getDefaultFreezingMethod());
                 }
