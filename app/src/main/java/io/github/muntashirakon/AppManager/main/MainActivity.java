@@ -149,6 +149,7 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
                 args.putIntArray(RulesTypeSelectionDialogFragment.ARG_USERS, Users.getUsersIds());
                 dialogFragment.setArguments(args);
                 dialogFragment.show(getSupportFragmentManager(), RulesTypeSelectionDialogFragment.TAG);
+                clearSelection();
             });
 
     private final ActivityResultLauncher<String> mExportAppListCsv = registerForActivityResult(
@@ -160,6 +161,7 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
                 }
                 mProgressIndicator.show();
                 viewModel.saveExportedAppList(ListExporter.EXPORT_TYPE_CSV, Paths.get(uri));
+                clearSelection();
             });
     private final ActivityResultLauncher<String> mExportAppListJson = registerForActivityResult(
             new ActivityResultContracts.CreateDocument("application/json"),
@@ -170,6 +172,7 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
                 }
                 mProgressIndicator.show();
                 viewModel.saveExportedAppList(ListExporter.EXPORT_TYPE_JSON, Paths.get(uri));
+                clearSelection();
             });
     private final ActivityResultLauncher<String> mExportAppListXml = registerForActivityResult(
             new ActivityResultContracts.CreateDocument("text/xml"),
@@ -180,6 +183,7 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
                 }
                 mProgressIndicator.show();
                 viewModel.saveExportedAppList(ListExporter.EXPORT_TYPE_XML, Paths.get(uri));
+                clearSelection();
             });
     private final ActivityResultLauncher<String> mExportAppListMarkdown = registerForActivityResult(
             new ActivityResultContracts.CreateDocument("text/markdown"),
@@ -190,6 +194,7 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
                 }
                 mProgressIndicator.show();
                 viewModel.saveExportedAppList(ListExporter.EXPORT_TYPE_MARKDOWN, Paths.get(uri));
+                clearSelection();
             });
 
     // Fork: the in-app batch-operation progress dialog (mirrors the foreground
@@ -574,6 +579,7 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
                 fragment.setOnActionBeginListener(mode -> showProgressIndicator(true));
                 fragment.setOnActionCompleteListener((mode, failedPackages) -> showProgressIndicator(false));
                 fragment.show(getSupportFragmentManager(), BackupRestoreDialogFragment.TAG);
+                clearSelection();
             }
         } else if (id == R.id.action_save_apk) {
             mStoragePermission.request(granted -> {
@@ -649,6 +655,7 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
         } else if (id == R.id.action_optimize) {
             DexOptDialog dialog = DexOptDialog.getInstance(viewModel.getSelectedPackages().keySet().toArray(new String[0]));
             dialog.show(getSupportFragmentManager(), DexOptDialog.TAG);
+            clearSelection();
         } else if (id == R.id.action_export_blocking_rules) {
             final String fileName = "app_manager_rules_export-" + DateUtils.formatDateTime(this, System.currentTimeMillis()) + ".am.tsv";
             mBatchExportRules.launch(fileName);
@@ -698,12 +705,14 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
             AddToProfileDialogFragment dialog = AddToProfileDialogFragment.getInstance(viewModel.getSelectedPackages()
                     .keySet().toArray(new String[0]));
             dialog.show(getSupportFragmentManager(), AddToProfileDialogFragment.TAG);
+            clearSelection();
         } else if (id == R.id.action_remove_from_profile) {
             // Fork: batch counterpart to add-to-profile — removes the selection
             // from one or more chosen profiles.
             RemoveFromProfileDialogFragment dialog = RemoveFromProfileDialogFragment.getInstance(viewModel.getSelectedPackages()
                     .keySet().toArray(new String[0]));
             dialog.show(getSupportFragmentManager(), RemoveFromProfileDialogFragment.TAG);
+            clearSelection();
         } else {
             return false;
         }
@@ -935,6 +944,12 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
         BatchQueueItem item = BatchQueueItem.getBatchOpQueue(op, input.getFailedPackages(), input.getAssociatedUsers(), options);
         Intent intent = BatchOpsService.getServiceIntent(this, item);
         ContextCompat.startForegroundService(this, intent);
+        // Fork: the packages are now captured in the queue item, so drop the
+        // selection immediately. Critical: a selection left alive after an op
+        // silently merges into the next one — e.g. apps frozen here (then hidden
+        // by a filter) would still be selected and get uninstalled by a later
+        // action the user thought was a fresh selection.
+        clearSelection();
     }
 
     private void handleBatchOpWithWarning(@BatchOpsManager.OpType int op) {
@@ -944,6 +959,19 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
                 .setPositiveButton(R.string.yes, (dialog, which) -> handleBatchOp(op))
                 .setNegativeButton(R.string.no, null)
                 .show();
+    }
+
+    // Fork: clear the multi-selection and exit selection mode once an action has
+    // captured the packages it needs. Selections must never survive an action —
+    // a stale selection merging into the next one is destructive (see the note
+    // in handleBatchOp). Routed through MultiSelectionView.cancel() so the model
+    // (MainViewModel.mSelectedPackageApplicationItemMap), the per-row isSelected
+    // flags, and the selection toolbar are all cleared together. No-op when not
+    // in selection mode.
+    private void clearSelection() {
+        if (mMultiSelectionView != null && mAdapter != null && mAdapter.isInSelectionMode()) {
+            mMultiSelectionView.cancel();
+        }
     }
 
     // Fork: open the in-app batch-progress dialog if the user has it enabled.
