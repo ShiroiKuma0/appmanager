@@ -461,7 +461,7 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
     private void updateFilterIcon(@NonNull Menu menu) {
         MenuItem item = menu.findItem(R.id.action_list_options);
         if (item == null) return;
-        Drawable base = ContextCompat.getDrawable(this, R.drawable.ic_list_status);
+        Drawable base = ContextCompat.getDrawable(this, R.drawable.ic_filter);
         if (base == null) return;
         base = base.mutate();
         boolean active = viewModel != null && viewModel.isFilterActive();
