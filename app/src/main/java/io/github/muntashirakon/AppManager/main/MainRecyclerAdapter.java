@@ -6,6 +6,7 @@ import static io.github.muntashirakon.AppManager.compat.PackageManagerCompat.MAT
 import static io.github.muntashirakon.AppManager.utils.UIUtils.displayLongToast;
 import static io.github.muntashirakon.AppManager.utils.UIUtils.displayShortToast;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -13,14 +14,17 @@ import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.RemoteException;
 import android.os.UserHandleHidden;
+import android.text.InputType;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextUtils;
 import android.text.style.RelativeSizeSpan;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.SectionIndexer;
@@ -32,6 +36,7 @@ import androidx.annotation.UiThread;
 import androidx.annotation.WorkerThread;
 import androidx.appcompat.widget.AppCompatImageView;
 import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.chip.Chip;
@@ -74,14 +79,17 @@ import io.github.muntashirakon.AppManager.settings.Prefs;
 import io.github.muntashirakon.AppManager.types.UserPackagePair;
 import io.github.muntashirakon.AppManager.users.UserInfo;
 import io.github.muntashirakon.AppManager.users.Users;
+import io.github.muntashirakon.AppManager.utils.AppNotesManager;
 import io.github.muntashirakon.AppManager.utils.ArrayUtils;
 import io.github.muntashirakon.AppManager.utils.BroadcastUtils;
 import io.github.muntashirakon.AppManager.utils.DateUtils;
+import io.github.muntashirakon.AppManager.utils.ForkThemeUtils;
 import io.github.muntashirakon.AppManager.utils.FreezeUtils;
 import io.github.muntashirakon.AppManager.utils.ThreadUtils;
 import io.github.muntashirakon.AppManager.utils.UIUtils;
 import io.github.muntashirakon.AppManager.utils.appearance.ColorCodes;
 import io.github.muntashirakon.dialog.SearchableItemsDialogBuilder;
+import io.github.muntashirakon.dialog.TextInputDialogBuilder;
 import io.github.muntashirakon.io.Path;
 import io.github.muntashirakon.io.Paths;
 import io.github.muntashirakon.util.AccessibilityUtils;
@@ -233,6 +241,35 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
         });
     }
 
+    /**
+     * Fork: show the per-app note dialog. Pre-fills the current note (if any) in
+     * an immediately-editable multi-line field; Save persists it (a blank entry
+     * deletes the note), Cancel discards. The edited row is refreshed via
+     * notifyItemChanged using the holder's <em>current</em> binding position
+     * (re-read at save time, never the stale bind position) so it stays correct
+     * under RecyclerView recycling. Notes ride the existing settings
+     * export/import automatically (see {@link AppNotesManager}).
+     */
+    private void showNoteDialog(@NonNull ViewHolder holder, @NonNull String packageName,
+                                @NonNull CharSequence appLabel) {
+        new TextInputDialogBuilder(mActivity, R.string.note)
+                .setTitle(appLabel)
+                .setInputText(AppNotesManager.getNote(mActivity, packageName))
+                .setInputInputType(InputType.TYPE_CLASS_TEXT
+                        | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                        | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+                .setHelperText(R.string.note_blank_deletes_helper)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.save, (dialog, which, inputText, isChecked) -> {
+                    AppNotesManager.setNote(mActivity, packageName, inputText);
+                    int pos = holder.getBindingAdapterPosition();
+                    if (pos != RecyclerView.NO_POSITION) {
+                        notifyItemChanged(pos);
+                    }
+                })
+                .show();
+    }
+
     @GuardedBy("mAdapterList")
     @UiThread
     void setDefaultList(List<ApplicationItem> list) {
@@ -371,6 +408,7 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
 
     @GuardedBy("mAdapterList")
     @Override
+    @SuppressLint("ClickableViewAccessibility")
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         final ApplicationItem item;
         synchronized (mAdapterList) {
@@ -529,6 +567,53 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
         // just re-applies the same italic/normal as before).
         FontUtil.apply(holder.label, FontPrefs.LABEL);
         holder.label.setTypeface(holder.label.getTypeface(), item.isFrozen ? Typeface.ITALIC : Typeface.NORMAL);
+        // Fork: per-app note affordance. Mutually exclusive per row —
+        //   has a note -> note glyph as a compound drawableEnd hugging the app
+        //                 name (tap the glyph to view/edit); top-right "+" hidden
+        //   no note    -> top-right "+" to create a note; no glyph
+        // The glyph is a compound drawable rather than a sibling view so it hugs
+        // the label text (a weighted sibling gets pushed to the far edge of the
+        // row, next to the "+" slot) and stays visible when the name ellipsizes.
+        // Only the glyph's hit region opens the dialog; every other touch on the
+        // label falls through to the card (open details / select). ViewHolder is
+        // recycled, so BOTH branches set the label drawable + touch listener AND
+        // the "+" visibility + click listener. Tint tracks the fork theme colour.
+        final String notePkg = item.packageName;
+        final CharSequence noteLabel = item.label;
+        int noteTint = ForkThemeUtils.getTextColor();
+        if (AppNotesManager.hasNote(context, notePkg)) {
+            int sz = Math.round(18 * context.getResources().getDisplayMetrics().density);
+            Drawable noteGlyph = ContextCompat.getDrawable(context, R.drawable.ic_note_24dp);
+            if (noteGlyph != null) {
+                noteGlyph = noteGlyph.mutate();
+                noteGlyph.setBounds(0, 0, sz, sz);
+                noteGlyph.setTintList(ColorStateList.valueOf(noteTint));
+            }
+            // Gap between the app name and the glyph: 0.7× the glyph width.
+            holder.label.setCompoundDrawablePadding(Math.round(sz * 0.7f));
+            holder.label.setCompoundDrawablesRelative(null, null, noteGlyph, null);
+            holder.label.setOnTouchListener((v, event) -> {
+                Drawable end = holder.label.getCompoundDrawablesRelative()[2];
+                if (end == null) return false;
+                boolean inBadge = holder.label.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL
+                        ? event.getX() <= holder.label.getCompoundPaddingLeft()
+                        : event.getX() >= holder.label.getWidth() - holder.label.getCompoundPaddingRight();
+                if (!inBadge) return false;
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                    v.performClick();
+                    showNoteDialog(holder, notePkg, noteLabel);
+                }
+                return true;
+            });
+            holder.noteAdd.setVisibility(View.GONE);
+            holder.noteAdd.setOnClickListener(null);
+        } else {
+            holder.label.setCompoundDrawablesRelative(null, null, null, null);
+            holder.label.setOnTouchListener(null);
+            holder.noteAdd.setImageTintList(ColorStateList.valueOf(noteTint));
+            holder.noteAdd.setVisibility(View.VISIBLE);
+            holder.noteAdd.setOnClickListener(v -> showNoteDialog(holder, notePkg, noteLabel));
+        }
         // Set package name
         if (!TextUtils.isEmpty(mSearchQuery) && item.packageName.toLowerCase(Locale.ROOT).contains(mSearchQuery)) {
             // Highlight searched query
@@ -1009,6 +1094,8 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
         TextView backupTime;
         ChipGroup profilePills;
         Chip addPill;
+        AppCompatImageView noteAdd;   // Fork: top-right "+" (no-note). The has-note
+                                      // badge is a compound drawable on `label`.
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -1031,6 +1118,7 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
             backupTime = itemView.findViewById(R.id.backup_time);
             profilePills = itemView.findViewById(R.id.profile_pills);
             addPill = itemView.findViewById(R.id.profile_add_pill);
+            noteAdd = itemView.findViewById(R.id.note_add);
         }
     }
 }
