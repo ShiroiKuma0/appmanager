@@ -471,7 +471,7 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
         }
         // --- end custom theme
         // Fork: long-press the overflow (hamburger) button opens the
-        // 白い熊の応用管理 UI settings page directly. Posted because the menu
+        // 白い熊 応用管理 UI settings page directly. Posted because the menu
         // views are laid out after this method returns.
         if (toolbar != null) {
             final androidx.appcompat.widget.Toolbar tb = toolbar;
@@ -482,7 +482,7 @@ public class MainActivity extends BaseActivity implements AdvancedSearchView.OnQ
 
     /**
      * Fork: wire a long-press on the toolbar's overflow (hamburger) button to
-     * open the 白い熊の応用管理 UI settings page. The overflow button is the
+     * open the 白い熊 応用管理 UI settings page. The overflow button is the
      * only ImageView child of the toolbar's ActionMenuView (the visible
      * action items are ActionMenuItemViews, which extend TextView).
      */
