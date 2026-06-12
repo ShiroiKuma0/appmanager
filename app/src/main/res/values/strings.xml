@@ -1600,7 +1600,7 @@
     <string name="adb_local_server_port">ADB local server port</string>
     <string name="waiting_for_wifi">Waiting for Wi-Fi</string>
     <!-- Configurable fonts (shiroikuma fork) -->
-    <string name="pref_fonts">UI colors &amp; fonts</string>
+    <string name="pref_fonts">白い熊の応用管理 UI</string>
     <string name="pref_fonts_description">Set the font, weight, size and color per interface element</string>
     <string name="pref_font_group_default">Default</string>
     <string name="pref_font_cat_default">Default (all text)</string>
@@ -1614,6 +1614,17 @@
         <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> app ID copied to clipboard</item>
         <item quantity="other"><xliff:g id="count" example="237">%1$d</xliff:g> app IDs copied to clipboard</item>
     </plurals>
+    <!-- Main-list separators (fork) -->
+    <string name="pref_sep_group">Main list separators</string>
+    <string name="pref_sep_cat_horizontal">Horizontal separator</string>
+    <string name="pref_sep_cat_vertical">Vertical separator</string>
+    <string name="pref_sep_width">Width (0 = none)</string>
+    <string name="pref_color_separator">Color</string>
+    <!-- Selected card frame (fork) -->
+    <string name="pref_selframe_group">Selected app frame</string>
+    <string name="pref_selframe_cat">Frame</string>
+    <string name="pref_selframe_width">Border width (0 = none)</string>
+    <string name="pref_selframe_radius">Corner roundness (0 = square)</string>
     <!-- Main-list layout picker (fork) -->
     <string name="list_layout">List layout</string>
     <string name="layout_adaptive">Adaptive (default)</string>
