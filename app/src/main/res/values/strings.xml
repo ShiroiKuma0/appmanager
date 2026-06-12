@@ -1599,7 +1599,7 @@
     <string name="manual_wireless_debugging_instructions">App Manager was unable to connect automatically using wireless debugging. Click <b>Pair</b> if you haven\'t paired App Manager using Wi-Fi or if the authorization was revoked. Otherwise click <b>Connect</b> to manually enter the port number. You can also use the button at the top to navigate to the wireless debugging setting.</string>
     <string name="manual_wireless_debugging_title">Connect using Wireless Debugging</string>
     <!-- Configurable fonts (shiroikuma fork) -->
-    <string name="pref_fonts">白い熊の応用管理 UI</string>
+    <string name="pref_fonts">白い熊 応用管理 UI</string>
     <string name="pref_fonts_description">Set the font, weight, size and color per interface element</string>
     <string name="pref_font_group_default">Default</string>
     <string name="pref_font_cat_default">Default (all text)</string>
