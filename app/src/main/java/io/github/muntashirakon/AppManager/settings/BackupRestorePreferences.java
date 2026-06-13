@@ -3,7 +3,7 @@
 package io.github.muntashirakon.AppManager.settings;
 
 import io.github.muntashirakon.AppManager.utils.ThreadUtils;
-import android.widget.Toast;
+import io.github.muntashirakon.AppManager.utils.UIUtils;
 import android.content.Context;
 import java.util.Arrays;
 import java.util.ArrayList;
@@ -442,29 +442,27 @@ public class BackupRestorePreferences extends PreferenceFragment {
 
     private void exportSettings() {
         if (!Prefs.Storage.hasSettingsExportDirectory()) {
-            Toast.makeText(mActivity, R.string.settings_export_dir_not_set, Toast.LENGTH_LONG).show();
+            UIUtils.displayLongToast(R.string.settings_export_dir_not_set);
             return;
         }
         Context appContext = mActivity.getApplicationContext();
         String dir = Prefs.Storage.getSettingsExportDirectory();
-        Toast.makeText(mActivity, R.string.settings_exporting, Toast.LENGTH_SHORT).show();
+        UIUtils.displayShortToast(R.string.settings_exporting);
         ThreadUtils.postOnBackgroundThread(() -> {
             try {
                 Path destDir = Paths.get(dir);
                 if (!destDir.exists()) destDir.mkdirs();
                 String name = SettingsBackupManager.export(appContext, destDir);
-                ThreadUtils.postOnMainThread(() -> Toast.makeText(mActivity,
-                        getString(R.string.settings_exported_to, name), Toast.LENGTH_LONG).show());
+                ThreadUtils.postOnMainThread(() -> UIUtils.displayLongToast(R.string.settings_exported_to, name));
             } catch (Exception e) {
-                ThreadUtils.postOnMainThread(() -> Toast.makeText(mActivity,
-                        getString(R.string.settings_export_failed, e.getMessage()), Toast.LENGTH_LONG).show());
+                ThreadUtils.postOnMainThread(() -> UIUtils.displayLongToast(R.string.settings_export_failed, e.getMessage()));
             }
         });
     }
 
     private void chooseSettingsImportFile() {
         if (!Prefs.Storage.hasSettingsExportDirectory()) {
-            Toast.makeText(mActivity, R.string.settings_export_dir_not_set, Toast.LENGTH_LONG).show();
+            UIUtils.displayLongToast(R.string.settings_export_dir_not_set);
             return;
         }
         Path dir = Paths.get(Prefs.Storage.getSettingsExportDirectory());
@@ -480,7 +478,7 @@ public class BackupRestorePreferences extends PreferenceFragment {
             }
         }
         if (zips.isEmpty()) {
-            Toast.makeText(mActivity, R.string.settings_no_exports_found, Toast.LENGTH_LONG).show();
+            UIUtils.displayLongToast(R.string.settings_no_exports_found);
             return;
         }
         CharSequence[] names = new CharSequence[zips.size()];
@@ -505,13 +503,13 @@ public class BackupRestorePreferences extends PreferenceFragment {
 
     private void importSettings(@NonNull Path zip) {
         Context appContext = mActivity.getApplicationContext();
-        Toast.makeText(mActivity, R.string.settings_importing, Toast.LENGTH_SHORT).show();
+        UIUtils.displayShortToast(R.string.settings_importing);
         ThreadUtils.postOnBackgroundThread(() -> {
             try {
                 int n = SettingsBackupManager.importFrom(appContext, zip);
                 ThreadUtils.postOnMainThread(() -> {
                     if (n <= 0) {
-                        Toast.makeText(mActivity, R.string.settings_import_empty, Toast.LENGTH_LONG).show();
+                        UIUtils.displayLongToast(R.string.settings_import_empty);
                         return;
                     }
                     new MaterialAlertDialogBuilder(mActivity)
@@ -522,8 +520,7 @@ public class BackupRestorePreferences extends PreferenceFragment {
                             .show();
                 });
             } catch (Exception e) {
-                ThreadUtils.postOnMainThread(() -> Toast.makeText(mActivity,
-                        getString(R.string.settings_import_failed, e.getMessage()), Toast.LENGTH_LONG).show());
+                ThreadUtils.postOnMainThread(() -> UIUtils.displayLongToast(R.string.settings_import_failed, e.getMessage()));
             }
         });
     }
