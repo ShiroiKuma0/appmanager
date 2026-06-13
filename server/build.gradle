@@ -4,6 +4,7 @@
 import javax.inject.Inject
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.util.stream.Collectors
 
 plugins {
@@ -64,8 +65,23 @@ android.libraryVariants.configureEach { variant ->
             String amJar = "${rootDir}/app/src/main/assets/am.jar"
             String mainJar = "${rootDir}/app/src/main/assets/main.jar"
 
+            // Fork: write each JAR to a temp path then atomically move it into
+            // place. d8 writes the output incrementally, so a consumer (the app's
+            // mergeAssets) that races this task could otherwise snapshot a 0-byte
+            // partial file — that shipped a broken main.jar in build +79 and broke
+            // ADB mode. The move is a same-filesystem rename, so a consumer sees
+            // either the old complete JAR or the new complete JAR, never a partial.
+            // Temp JARs live in build/ (NOT in assets/, so a stray temp can never
+            // be packaged) and keep the .jar extension (d8 rejects other suffixes).
+            // Per-variant subdir: the release + debug jar tasks run in parallel and
+            // would otherwise collide on a shared temp path.
+            String tmpDir = "${rootDir}/server/build/serverjars-tmp/${buildType}"
+            Files.createDirectories(Paths.get(tmpDir))
+            String amJarTmp = "${tmpDir}/am.jar"
+            String mainJarTmp = "${tmpDir}/main.jar"
+
             println("Creating am.jar...")
-            def buildArgs = ['--release', '--output', amJar, '--classpath', androidJar]
+            def buildArgs = ['--release', '--output', amJarTmp, '--classpath', androidJar]
             buildArgs.addAll(Files.list(Paths.get(libserverClassDir)).filter {
                 !it.fileName.toString().startsWith("IRootServiceManager")
             }.map { it.toString() }.collect(Collectors.toList()))
@@ -77,10 +93,11 @@ android.libraryVariants.configureEach { variant ->
                 executable = new File("${capturedSdkDirPath}/build-tools/${capturedBuildToolsVersion}/d8")
                 args = buildArgs
             }
+            Files.move(Paths.get(amJarTmp), Paths.get(amJar), StandardCopyOption.REPLACE_EXISTING)
             println("Created ${amJar}")
 
             println("Creating main.jar...")
-            buildArgs = ['--release', '--output', mainJar, '--classpath', androidJar]
+            buildArgs = ['--release', '--output', mainJarTmp, '--classpath', androidJar]
             buildArgs.addAll(Files.list(Paths.get(libserverClassDir)).filter {
                 it.fileName.toString().startsWith("IRootServiceManager") || it.fileName.toString().startsWith("ServerUtils")
             }.map { it.toString() }.collect(Collectors.toList()))
@@ -92,6 +109,7 @@ android.libraryVariants.configureEach { variant ->
                 executable = new File("${capturedSdkDirPath}/build-tools/${capturedBuildToolsVersion}/d8")
                 args = buildArgs
             }
+            Files.move(Paths.get(mainJarTmp), Paths.get(mainJar), StandardCopyOption.REPLACE_EXISTING)
             println("Created ${mainJar}")
         }
     }
