@@ -18,6 +18,7 @@ import com.google.android.material.checkbox.MaterialCheckBox;
 import com.google.android.material.textview.MaterialTextView;
 
 import io.github.muntashirakon.ui.R;
+import io.github.muntashirakon.util.UiUtils;
 
 @SuppressWarnings("unused")
 public class ScrollableDialogBuilder {
@@ -161,7 +162,9 @@ public class ScrollableDialogBuilder {
 
     @NonNull
     public AlertDialog create() {
-        return mBuilder.create();
+        AlertDialog dialog = mBuilder.create();
+        UiUtils.applyForkDialogBorder(dialog);
+        return dialog;
     }
 
     public void show() {

@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.github.muntashirakon.ui.R;
 import io.github.muntashirakon.util.AdapterUtils;
+import io.github.muntashirakon.util.UiUtils;
 import io.github.muntashirakon.widget.CheckBox;
 import io.github.muntashirakon.widget.SearchView;
 
@@ -231,7 +232,9 @@ public class SearchableMultiChoiceDialogBuilder<T> {
     }
 
     public AlertDialog create() {
-        return mDialog = mBuilder.create();
+        mDialog = mBuilder.create();
+        UiUtils.applyForkDialogBorder(mDialog);
+        return mDialog;
     }
 
     public void show() {
