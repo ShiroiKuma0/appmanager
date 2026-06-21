@@ -13,6 +13,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Outline;
 import android.graphics.Typeface;
 
 import androidx.core.graphics.ColorUtils;
@@ -28,6 +29,7 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.widget.SectionIndexer;
 import android.widget.TextView;
 
@@ -1139,10 +1141,11 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
         });
     }
 
-    // Fork: apply the configurable main-list icon size. Sizes the icon square,
-    // widens the icon column to match, and scales the snowflake + force-stop ✕
-    // glyphs to ~0.43× the icon (so at the 60dp default they stay 26dp, and the
-    // two glyphs always fit under the icon with a gap between them). Idempotent —
+    // Fork: apply the configurable main-list icon size + roundness. Sizes the
+    // icon square, widens the icon column to match, scales the snowflake +
+    // force-stop ✕ glyphs to ~0.43× the icon (so at the 60dp default they stay
+    // 26dp, and the two glyphs always fit under the icon with a gap), and clips
+    // the icon corners to a % of its size (0 = square, 50 = circle). Idempotent —
     // only writes LayoutParams when a dimension actually changed.
     private void applyMainIconSize(@NonNull ViewHolder holder) {
         float density = mActivity.getResources().getDisplayMetrics().density;
@@ -1153,6 +1156,28 @@ public class MainRecyclerAdapter extends MultiSelectionView.Adapter<MainRecycler
         setViewSize(holder.icon, iconPx, iconPx);
         setViewSize(holder.freezeIndicator, glyphPx, glyphPx);
         setViewSize(holder.killBadge, glyphPx, glyphPx);
+        int roundPct = MainIconPrefs.getRoundnessPercent(mActivity);
+        if (roundPct > 0) {
+            holder.icon.setOutlineProvider(new RoundOutline(iconPx * roundPct / 100f));
+            holder.icon.setClipToOutline(true);
+        } else {
+            holder.icon.setOutlineProvider(null);
+            holder.icon.setClipToOutline(false);
+        }
+    }
+
+    /** Fork: rounds the app-icon corners to a fixed radius (px) for the roundness pref. */
+    private static final class RoundOutline extends ViewOutlineProvider {
+        private final float mRadius;
+
+        RoundOutline(float radiusPx) {
+            mRadius = radiusPx;
+        }
+
+        @Override
+        public void getOutline(@NonNull View view, @NonNull Outline outline) {
+            outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), mRadius);
+        }
     }
 
     private static void setViewWidth(@NonNull View v, int w) {
