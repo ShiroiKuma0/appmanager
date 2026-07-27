@@ -49,6 +49,31 @@ import io.github.muntashirakon.util.UiUtils;
 public class AppDetailsActivity extends BaseActivity {
     public static final String ALIAS_APP_INFO = "io.github.muntashirakon.AppManager.details.AppInfoActivity";
 
+    /**
+     * Fork: tab display order → {@link AppDetailsFragment.Property}. The Snooping
+     * tab shows second, right after App info, but its property id is the last one
+     * (13) because those ids key the view model's state; inserting a new id at
+     * position 1 would shift every other property. Keep this array in lockstep
+     * with {@code R.array.TAB_TITLES} — same length, same order.
+     */
+    @AppDetailsFragment.Property
+    private static final int[] TAB_PROPERTIES = {
+            AppDetailsFragment.APP_INFO,
+            AppDetailsFragment.SNOOPING,
+            AppDetailsFragment.ACTIVITIES,
+            AppDetailsFragment.SERVICES,
+            AppDetailsFragment.RECEIVERS,
+            AppDetailsFragment.PROVIDERS,
+            AppDetailsFragment.APP_OPS,
+            AppDetailsFragment.USES_PERMISSIONS,
+            AppDetailsFragment.PERMISSIONS,
+            AppDetailsFragment.FEATURES,
+            AppDetailsFragment.CONFIGURATIONS,
+            AppDetailsFragment.SIGNATURES,
+            AppDetailsFragment.SHARED_LIBRARIES,
+            AppDetailsFragment.OVERLAYS,
+    };
+
     private static final String EXTRA_PACKAGE_NAME = "android.intent.extra.PACKAGE_NAME"; // Intent.EXTRA_PACKAGE_NAME
     private static final String EXTRA_APK_SOURCE = "src";
     private static final String EXTRA_USER_HANDLE = "user";
@@ -314,9 +339,8 @@ public class AppDetailsActivity extends BaseActivity {
     }
 
     private void loadTabs() {
-        @AppDetailsFragment.Property int id = mViewPager.getCurrentItem();
-        Log.d("ADA - " + mTabTitleIds.getText(id), "isPackageChanged called");
-        for (int i = 0; i < mTabTitleIds.length(); ++i) model.load(i);
+        Log.d("ADA - " + mTabTitleIds.getText(mViewPager.getCurrentItem()), "isPackageChanged called");
+        for (int property : TAB_PROPERTIES) model.load(property);
     }
 
     // For tab layout
@@ -327,13 +351,21 @@ public class AppDetailsActivity extends BaseActivity {
 
         @NonNull
         @Override
-        public Fragment createFragment(@AppDetailsFragment.Property int position) {
-            if (mTabFragments[position] != null) {
-                return mTabFragments[position];
+        public Fragment createFragment(int tabPosition) {
+            if (mTabFragments[tabPosition] != null) {
+                return mTabFragments[tabPosition];
             }
+            @AppDetailsFragment.Property int position = TAB_PROPERTIES[tabPosition];
             switch (position) {
                 case AppDetailsFragment.APP_INFO:
-                    return mTabFragments[position] = new AppInfoFragment();
+                    return mTabFragments[tabPosition] = new AppInfoFragment();
+                case AppDetailsFragment.SNOOPING: {
+                    AppDetailsSnoopingFragment fragment = new AppDetailsSnoopingFragment();
+                    Bundle args = new Bundle();
+                    args.putInt(AppDetailsFragment.ARG_TYPE, position);
+                    fragment.setArguments(args);
+                    return mTabFragments[tabPosition] = fragment;
+                }
                 case AppDetailsFragment.ACTIVITIES:
                 case AppDetailsFragment.SERVICES:
                 case AppDetailsFragment.RECEIVERS:
@@ -342,7 +374,7 @@ public class AppDetailsActivity extends BaseActivity {
                     Bundle args = new Bundle();
                     args.putInt(AppDetailsFragment.ARG_TYPE, position);
                     fragment.setArguments(args);
-                    return mTabFragments[position] = fragment;
+                    return mTabFragments[tabPosition] = fragment;
                 }
                 case AppDetailsFragment.APP_OPS:
                 case AppDetailsFragment.PERMISSIONS:
@@ -351,7 +383,7 @@ public class AppDetailsActivity extends BaseActivity {
                     Bundle args = new Bundle();
                     args.putInt(AppDetailsFragment.ARG_TYPE, position);
                     fragment.setArguments(args);
-                    return mTabFragments[position] = fragment;
+                    return mTabFragments[tabPosition] = fragment;
                 }
                 case AppDetailsFragment.CONFIGURATIONS:
                 case AppDetailsFragment.FEATURES:
@@ -361,16 +393,16 @@ public class AppDetailsActivity extends BaseActivity {
                     Bundle args = new Bundle();
                     args.putInt(AppDetailsFragment.ARG_TYPE, position);
                     fragment.setArguments(args);
-                    return mTabFragments[position] = fragment;
+                    return mTabFragments[tabPosition] = fragment;
                 }
                 case AppDetailsFragment.OVERLAYS:
                     AppDetailsOverlaysFragment fragment = new AppDetailsOverlaysFragment();
                     Bundle args = new Bundle();
                     args.putInt(AppDetailsFragment.ARG_TYPE, position);
                     fragment.setArguments(args);
-                    return mTabFragments[position] = fragment;
+                    return mTabFragments[tabPosition] = fragment;
             }
-            return mTabFragments[position];
+            return mTabFragments[tabPosition];
         }
 
         @Override
