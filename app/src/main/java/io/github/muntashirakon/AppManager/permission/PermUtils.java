@@ -425,7 +425,9 @@ public class PermUtils {
         }
     }
 
-    private static boolean supportsRuntimePermissions(@NonNull ApplicationInfo applicationInfo) {
+    // Fork: made public so the Snooping tab can ask the same question this class
+    // asks before choosing its grant/revoke branch — see SnoopingResolver.
+    public static boolean supportsRuntimePermissions(@NonNull ApplicationInfo applicationInfo) {
         return applicationInfo.targetSdkVersion > Build.VERSION_CODES.LOLLIPOP_MR1;
     }
 
