@@ -55,6 +55,7 @@ import io.github.muntashirakon.AppManager.users.Owners;
 import io.github.muntashirakon.AppManager.users.Users;
 import io.github.muntashirakon.AppManager.utils.AppPref;
 import io.github.muntashirakon.AppManager.utils.ExUtils;
+import io.github.muntashirakon.AppManager.utils.ForkDialog;
 import io.github.muntashirakon.AppManager.utils.ThreadUtils;
 import io.github.muntashirakon.AppManager.utils.UIUtils;
 import io.github.muntashirakon.AppManager.utils.Utils;
@@ -629,14 +630,16 @@ public class Ops {
                 })
                 .setEndIconContentDescription(R.string.open_developer_options_page);
 
-        new MaterialAlertDialogBuilder(activity)
+        // Fork: bordered like the TextInputDialogBuilder/ScrollableDialogBuilder
+        // steps of the same ADB flow. The builder keeps the host activity's own
+        // theme, so this is a no-op outside the yellow-on-black screens.
+        ForkDialog.present(new MaterialAlertDialogBuilder(activity)
                 .setCustomTitle(builder.build())
                 .setMessage(R.string.manual_wireless_debugging_instructions)
                 .setCancelable(false)
                 .setPositiveButton(R.string.adb_connect, (dialog1, which1) -> callback.onStatusReceived(STATUS_ADB_CONNECT_REQUIRED))
                 .setNeutralButton(R.string.adb_pair, (dialog1, which1) -> callback.onStatusReceived(STATUS_ADB_PAIRING_REQUIRED))
-                .setNegativeButton(R.string.cancel, (dialog, which) -> callback.connectAdb(-1))
-                .show();
+                .setNegativeButton(R.string.cancel, (dialog, which) -> callback.connectAdb(-1)));
     }
 
     @WorkerThread
@@ -722,7 +725,8 @@ public class Ops {
     @NoOps
     public static void pairAdbInput(@NonNull FragmentActivity activity,
                                     @NonNull AdbConnectionInterface callback) {
-        new MaterialAlertDialogBuilder(activity)
+        // Fork: bordered — see displayManualWirelessDebuggingInstructions above.
+        ForkDialog.present(new MaterialAlertDialogBuilder(activity)
                 .setTitle(R.string.adb_pairing_title)
                 .setMessage(R.string.adb_pairing_instruction)
                 .setCancelable(false)
@@ -742,8 +746,7 @@ public class Ops {
                     activity.startActivity(developerOptionsIntent);
                     ContextCompat.startForegroundService(activity, adbPairingServiceIntent);
                     callback.pairAdb();
-                })
-                .show();
+                }));
     }
 
     @WorkerThread
