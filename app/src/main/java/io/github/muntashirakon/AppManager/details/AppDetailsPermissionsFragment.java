@@ -85,6 +85,8 @@ public class AppDetailsPermissionsFragment extends AppDetailsFragment {
     private int mNeededProperty;
     private int mSortOrder;
     private String mSearchQuery;
+    /** Fork: the state epoch this list was built from — see {@link #onResume()}. */
+    private int mRenderedEpoch;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -122,6 +124,7 @@ public class AppDetailsPermissionsFragment extends AppDetailsFragment {
         mSortOrder = viewModel.getSortOrder(mNeededProperty);
         mSearchQuery = viewModel.getSearchQuery();
         mPackageName = viewModel.getPackageName();
+        mRenderedEpoch = viewModel.getStateEpoch();
         viewModel.get(mNeededProperty).observe(getViewLifecycleOwner(), appDetailsItems -> {
             if (appDetailsItems != null && mAdapter != null && viewModel.isPackageExist()) {
                 mPackageName = viewModel.getPackageName();
@@ -300,6 +303,17 @@ public class AppDetailsPermissionsFragment extends AppDetailsFragment {
     public void onResume() {
         super.onResume();
         if (viewModel != null) {
+            // Fork: the Snooping tab (and the other tabs here) write the very ops
+            // and permissions this list shows, and nothing reloads a tab when you
+            // page back to it. A stale row is not merely wrong to look at: this
+            // list's toggle decides which way to write from the mode it is
+            // holding, so it would undo what the other tab just did.
+            int epoch = viewModel.getStateEpoch();
+            if (epoch != mRenderedEpoch) {
+                mRenderedEpoch = epoch;
+                ProgressIndicatorCompat.setVisibility(progressIndicator, true);
+                viewModel.load(mNeededProperty);
+            }
             int sortOrder = viewModel.getSortOrder(mNeededProperty);
             String searchQuery = viewModel.getSearchQuery();
             if (sortOrder != mSortOrder || !Objects.equals(searchQuery, mSearchQuery)) {
