@@ -50,6 +50,7 @@ import io.github.muntashirakon.AppManager.servermanager.LocalServer;
 import io.github.muntashirakon.AppManager.servermanager.ServerConfig;
 import io.github.muntashirakon.AppManager.session.SessionMonitoringService;
 import io.github.muntashirakon.AppManager.battery.BatterySamplerJob;
+import io.github.muntashirakon.AppManager.devicepolicy.PolicyEnforcer;
 import io.github.muntashirakon.AppManager.snooping.SnoopingEnforcer;
 import io.github.muntashirakon.AppManager.users.Owners;
 import io.github.muntashirakon.AppManager.users.Users;
@@ -231,6 +232,12 @@ public class Ops {
             // apps, and any install we could not act on at the time because the
             // ADB/Shizuku server was not up. Runs off the main thread.
             SnoopingEnforcer.enforceAllAsync(context);
+            // Fork, +80: and the remembered device-policy locks. Ordering against
+            // the sweep above does not matter here the way it does on an install:
+            // a sweep only writes where the live state already disagrees, so the
+            // two converge whichever lands first, and the next sweep corrects a
+            // race. The acute path chains them explicitly — see PolicyEnforcer.
+            PolicyEnforcer.replayAllAsync(context.getApplicationContext());
             // Fork: same reasoning for the battery sampler. SelfPermissions.init()
             // has had its chance to grant BATTERY_STATS by now, so this is the
             // first moment the periodic job can actually read anything.
