@@ -2,10 +2,10 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <resources>
     <array name="TAB_TITLES">
-        <item>@string/app_info</item>
-        <!-- Fork: anti-snooping tab. Order here must match
-             AppDetailsActivity.TAB_PROPERTIES exactly. -->
+        <!-- Fork: the anti-snooping tab is FIRST, so App details opens on it.
+             Order here must match AppDetailsActivity.TAB_PROPERTIES exactly. -->
         <item>@string/snooping</item>
+        <item>@string/app_info</item>
         <item>@string/activities</item>
         <item>@string/service</item>
         <item>@string/receivers</item>

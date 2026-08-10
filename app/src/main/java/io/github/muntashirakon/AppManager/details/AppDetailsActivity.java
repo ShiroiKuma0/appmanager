@@ -50,16 +50,17 @@ public class AppDetailsActivity extends BaseActivity {
     public static final String ALIAS_APP_INFO = "io.github.muntashirakon.AppManager.details.AppInfoActivity";
 
     /**
-     * Fork: tab display order → {@link AppDetailsFragment.Property}. The Snooping
-     * tab shows second, right after App info, but its property id is the last one
-     * (13) because those ids key the view model's state; inserting a new id at
-     * position 1 would shift every other property. Keep this array in lockstep
+     * Fork: tab display order → {@link AppDetailsFragment.Property}. Snooping is
+     * <b>first</b>, and therefore the page App details opens on (白い熊): it is
+     * what this app is opened for. Its property id is still the last one (13) —
+     * those ids key the view model's per-property state, so inserting one at
+     * position 0 would shift every other property. Keep this array in lockstep
      * with {@code R.array.TAB_TITLES} — same length, same order.
      */
     @AppDetailsFragment.Property
     private static final int[] TAB_PROPERTIES = {
-            AppDetailsFragment.APP_INFO,
             AppDetailsFragment.SNOOPING,
+            AppDetailsFragment.APP_INFO,
             AppDetailsFragment.ACTIVITIES,
             AppDetailsFragment.SERVICES,
             AppDetailsFragment.RECEIVERS,
@@ -80,8 +81,8 @@ public class AppDetailsActivity extends BaseActivity {
     private static final String EXTRA_BACK_TO_MAIN = "main";
     /** Fork: tab index to open on, so callers can land on 盗み見 directly. */
     private static final String EXTRA_TAB = "tab";
-    /** Position of the Snooping tab in TAB_PROPERTIES. */
-    public static final int TAB_SNOOPING = 1;
+    /** Position of the Snooping tab in TAB_PROPERTIES — first, i.e. the default. */
+    public static final int TAB_SNOOPING = 0;
 
     @NonNull
     public static Intent getIntent(@NonNull Context context, @NonNull String packageName, @UserIdInt int userId) {
