@@ -42,6 +42,7 @@ import io.github.muntashirakon.AppManager.apk.dexopt.DexOptimizer;
 import io.github.muntashirakon.AppManager.apk.installer.PackageInstallerCompat;
 import io.github.muntashirakon.AppManager.backup.BackupException;
 import io.github.muntashirakon.AppManager.backup.BackupManager;
+import io.github.muntashirakon.AppManager.backup.BackupProgressListener;
 import io.github.muntashirakon.AppManager.backup.convert.ConvertUtils;
 import io.github.muntashirakon.AppManager.backup.convert.Converter;
 import io.github.muntashirakon.AppManager.backup.dialog.BackupRestoreDialogFragment;
@@ -315,7 +316,7 @@ public class BatchOpsManager {
         UserPackagePair pair;
         for (int i = 0; i < max; ++i) {
             pair = info.getPair(i);
-            updateProgress(lastProgress, i + 1);
+            updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
             // Do operation
             try {
                 ApkUtils.backupApk(context, pair.getPackageName(), pair.getUserId());
@@ -361,13 +362,26 @@ public class BatchOpsManager {
                         updateProgress(lastProgress, counter.get());
                     }
                     CharSequence appLabel = PackageUtils.getPackageLabel(pm, pair.getPackageName(), pair.getUserId());
+                    // Fork: this runs on one of several executor threads, so the
+                    // app is announced as an in-flight ITEM rather than as "the"
+                    // current app — see BatchOpsProgressMonitor. itemStarted is
+                    // paired with itemFinished in a finally, or a failed app would
+                    // sit in the dialog's list for the rest of the batch.
+                    String key = BatchOpsProgressMonitor.keyOf(pair.getPackageName(), pair.getUserId());
+                    BatchOpsProgressMonitor monitor = BatchOpsProgressMonitor.getInstance();
+                    monitor.itemStarted(key, appLabel, pair.getPackageName(), pair.getUserId());
+                    boolean succeeded = false;
                     CharSequence title = context.getString(R.string.backing_up_app, appLabel);
                     ProgressHandler subProgressHandler = newSubProgress(operationName, title);
                     try {
-                        backupManager.backup(options.getBackupOpOptions(pair.getPackageName(), pair.getUserId()), subProgressHandler);
+                        backupManager.backup(options.getBackupOpOptions(pair.getPackageName(), pair.getUserId()),
+                                subProgressHandler, itemListener(key));
+                        succeeded = true;
                     } catch (BackupException e) {
                         log("====> op=BACKUP_RESTORE, mode=BACKUP pkg=" + pair, e);
                         failedPackages.add(pair);
+                    } finally {
+                        monitor.itemFinished(key, succeeded);
                     }
                     if (subProgressHandler != null) {
                         ThreadUtils.postOnMainThread(() -> subProgressHandler.onResult(null));
@@ -403,14 +417,23 @@ public class BatchOpsManager {
                         updateProgress(lastProgress, count.get());
                     }
                     CharSequence appLabel = PackageUtils.getPackageLabel(pm, pair.getPackageName(), pair.getUserId());
+                    // Fork: as in backup() — one in-flight item per executor thread.
+                    String key = BatchOpsProgressMonitor.keyOf(pair.getPackageName(), pair.getUserId());
+                    BatchOpsProgressMonitor monitor = BatchOpsProgressMonitor.getInstance();
+                    monitor.itemStarted(key, appLabel, pair.getPackageName(), pair.getUserId());
+                    boolean succeeded = false;
                     CharSequence title = context.getString(R.string.restoring_app, appLabel);
                     ProgressHandler subProgressHandler = newSubProgress(operationName, title);
                     try {
-                        backupManager.restore(options.getRestoreOpOptions(pair.getPackageName(), pair.getUserId()), subProgressHandler);
+                        backupManager.restore(options.getRestoreOpOptions(pair.getPackageName(), pair.getUserId()),
+                                subProgressHandler, itemListener(key));
                         requiresRestart.set(requiresRestart.get() | backupManager.requiresRestart());
+                        succeeded = true;
                     } catch (Throwable e) {
                         log("====> op=BACKUP_RESTORE, mode=RESTORE pkg=" + pair, e);
                         failedPackages.add(pair);
+                    } finally {
+                        monitor.itemFinished(key, succeeded);
                     }
                     if (subProgressHandler != null) {
                         ThreadUtils.postOnMainThread(() -> subProgressHandler.onResult(null));
@@ -436,8 +459,8 @@ public class BatchOpsManager {
             BackupManager backupManager = new BackupManager();
             UserPackagePair pair;
             for (int i = 0; i < max; ++i) {
-                updateProgress(lastProgress, i + 1);
                 pair = info.getPair(i);
+                updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
                 try {
                     backupManager.deleteBackup(options.getDeleteOpOptions(pair.getPackageName(), pair.getUserId()));
                 } catch (BackupException e) {
@@ -502,8 +525,8 @@ public class BatchOpsManager {
         int max = info.size();
         UserPackagePair pair;
         for (int i = 0; i < max; ++i) {
-            updateProgress(lastProgress, i + 1);
             pair = info.getPair(i);
+            updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
             try {
                 ComponentUtils.blockFilteredComponents(pair, options.getSignatures());
             } catch (Exception e) {
@@ -521,8 +544,8 @@ public class BatchOpsManager {
         int max = info.size();
         UserPackagePair pair;
         for (int i = 0; i < max; ++i) {
-            updateProgress(lastProgress, i + 1);
             pair = info.getPair(i);
+            updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
             try {
                 ComponentUtils.blockTrackingComponents(pair);
             } catch (Exception e) {
@@ -544,8 +567,8 @@ public class BatchOpsManager {
         int max = info.size();
         UserPackagePair pair;
         for (int i = 0; i < max; ++i) {
-            updateProgress(lastProgress, i + 1);
             pair = info.getPair(i);
+            updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
             try {
                 PackageManagerCompat.deleteApplicationCacheFilesAsUser(pair);
             } catch (Exception e) {
@@ -579,8 +602,8 @@ public class BatchOpsManager {
         int max = info.size();
         UserPackagePair pair;
         for (int i = 0; i < max; ++i) {
-            updateProgress(lastProgress, i + 1);
             pair = info.getPair(i);
+            updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
             try {
                 PackageManagerCompat.clearApplicationUserData(pair);
             } catch (Exception e) {
@@ -647,8 +670,8 @@ public class BatchOpsManager {
         int max = info.size();
         UserPackagePair pair;
         for (int i = 0; i < max; ++i) {
-            updateProgress(lastProgress, i + 1);
             pair = info.getPair(i);
+            updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
             int uid = PackageUtils.getAppUid(pair);
             if (uid == -1) {
                 failedPackages.add(pair);
@@ -690,8 +713,8 @@ public class BatchOpsManager {
         if (permissions.length == 1 && permissions[0].equals("*")) {
             // Wildcard detected
             for (int i = 0; i < max; ++i) {
-                updateProgress(lastProgress, i + 1);
                 pair = info.getPair(i);
+                updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
                 try {
                     permissions = PackageUtils.getPermissionsForPackage(pair.getPackageName(), pair.getUserId());
                     if (permissions == null) continue;
@@ -709,8 +732,8 @@ public class BatchOpsManager {
             }
         } else {
             for (int i = 0; i < max; ++i) {
-                updateProgress(lastProgress, i + 1);
                 pair = info.getPair(i);
+                updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
                 for (String permission : permissions) {
                     try {
                         if (isGrant) {
@@ -735,8 +758,8 @@ public class BatchOpsManager {
         int max = info.size();
         UserPackagePair pair;
         for (int i = 0; i < max; ++i) {
-            updateProgress(lastProgress, i + 1);
             pair = info.getPair(i);
+            updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
             try {
                 PackageManagerCompat.forceStopPackage(pair.getPackageName(), pair.getUserId());
             } catch (Throwable e) {
@@ -755,8 +778,8 @@ public class BatchOpsManager {
         int max = info.size();
         UserPackagePair pair;
         for (int i = 0; i < max; ++i) {
-            updateProgress(lastProgress, i + 1);
             pair = info.getPair(i);
+            updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
             try {
                 int uid = PackageUtils.getAppUid(pair);
                 NetworkPolicyManagerCompat.setUidPolicy(uid, options.getPolicies());
@@ -780,8 +803,8 @@ public class BatchOpsManager {
         if (appOps.length == 1 && appOps[0] == AppOpsManagerCompat.OP_NONE) {
             // Wildcard detected
             for (int i = 0; i < max; ++i) {
-                updateProgress(lastProgress, i + 1);
                 pair = info.getPair(i);
+                updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
                 try {
                     List<Integer> appOpList = new ArrayList<>();
                     ApplicationInfo applicationInfo = PackageManagerCompat.getApplicationInfo(pair.getPackageName(),
@@ -800,8 +823,8 @@ public class BatchOpsManager {
             }
         } else {
             for (int i = 0; i < max; ++i) {
-                updateProgress(lastProgress, i + 1);
                 pair = info.getPair(i);
+                updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
                 try {
                     ExternalComponentsImporter.setModeToFilteredAppOps(appOpsManager, pair, appOps, options.getMode());
                 } catch (RemoteException e) {
@@ -821,8 +844,8 @@ public class BatchOpsManager {
         int max = info.size();
         UserPackagePair pair;
         for (int i = 0; i < max; ++i) {
-            updateProgress(lastProgress, i + 1);
             pair = info.getPair(i);
+            updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
             try {
                 ComponentUtils.unblockFilteredComponents(pair, options.getSignatures());
             } catch (Throwable th) {
@@ -840,8 +863,8 @@ public class BatchOpsManager {
         int max = info.size();
         UserPackagePair pair;
         for (int i = 0; i < max; ++i) {
-            updateProgress(lastProgress, i + 1);
             pair = info.getPair(i);
+            updateProgress(lastProgress, i + 1, pair.getPackageName(), pair.getUserId());
             try {
                 ComponentUtils.unblockTrackingComponents(pair);
             } catch (Throwable th) {
@@ -926,7 +949,7 @@ public class BatchOpsManager {
         float lastProgress = mProgressHandler != null ? mProgressHandler.getLastProgress() : 0;
         int i = 0;
         for (String packageName : options.packages) {
-            updateProgress(lastProgress, ++i);
+            updateProgress(lastProgress, ++i, packageName, UserHandleHidden.myUserId());
             if (packageName.equals(BuildConfig.APPLICATION_ID)) {
                 // Ignore App Manager
                 continue;
@@ -1005,12 +1028,35 @@ public class BatchOpsManager {
         // Current progress = last progress + current
         float progress = last + current;
         mProgressHandler.postUpdate(progress);
-        if (packageName == null) {
-            monitor.publishProgress(mProgressHandler.getLastMax(), Math.round(progress));
-        } else {
-            monitor.publishProgress(mProgressHandler.getLastMax(), Math.round(progress),
-                    getCurrentItemLabel(packageName, userId), packageName);
+        if (packageName != null) {
+            monitor.setCurrentItem(getCurrentItemLabel(packageName, userId), packageName, userId);
         }
+        monitor.publishProgress(mProgressHandler.getLastMax(), Math.round(progress));
+    }
+
+    // Fork: bind a BackupProgressListener to one in-flight item, so a long
+    // backup or restore can say where it is writing and which stage it is on.
+    // Byte counts are operation-wide rather than per item: what the dialog is
+    // asked for there is "how much has this whole batch produced".
+    @NonNull
+    private BackupProgressListener itemListener(@NonNull String key) {
+        BatchOpsProgressMonitor monitor = BatchOpsProgressMonitor.getInstance();
+        return new BackupProgressListener() {
+            @Override
+            public void onDestination(@NonNull String destination) {
+                monitor.itemDestination(key, destination);
+            }
+
+            @Override
+            public void onStage(@NonNull CharSequence stage, @Nullable CharSequence detail) {
+                monitor.itemStage(key, stage, detail);
+            }
+
+            @Override
+            public void onBytesWritten(long bytes) {
+                monitor.addBytes(bytes);
+            }
+        };
     }
 
     // Fork: best-effort app label for the dialog's current-item line. Includes
