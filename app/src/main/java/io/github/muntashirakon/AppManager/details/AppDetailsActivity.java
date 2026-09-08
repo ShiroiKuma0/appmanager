@@ -82,7 +82,32 @@ public class AppDetailsActivity extends BaseActivity {
     /** Fork: tab index to open on, so callers can land on 盗み見 directly. */
     private static final String EXTRA_TAB = "tab";
     /** Position of the Snooping tab in TAB_PROPERTIES — first, i.e. the default. */
-    public static final int TAB_SNOOPING = 0;
+    public static final int TAB_SNOOPING = tabPositionOf(AppDetailsFragment.SNOOPING);
+    /**
+     * Fork (白い熊, +168): position of the App info tab, which is <b>second</b> since 盗み見 was pinned
+     * in front of it.
+     *
+     * <p>It needs a name of its own precisely because it is no longer first. Callers that mean "open
+     * this app" used to pass {@code -1} — "wherever App details opens by default" — and inherit
+     * whatever happened to be at position 0. That was App info when the constant was written and
+     * became Snooping when the tab order changed, so the app pane's <i>App info</i> and
+     * <i>Snooping</i> pills silently became the same button, as did the backup column's tap.
+     *
+     * <p><b>Both positions are looked up in {@link #TAB_PROPERTIES} rather than written as literals</b>,
+     * so reordering the tabs again cannot quietly repoint either of them. Neither is used as a
+     * {@code case} label, so neither needs to be a compile-time constant.
+     */
+    public static final int TAB_APP_INFO = tabPositionOf(AppDetailsFragment.APP_INFO);
+
+    private static int tabPositionOf(@AppDetailsFragment.Property int property) {
+        for (int i = 0; i < TAB_PROPERTIES.length; ++i) {
+            if (TAB_PROPERTIES[i] == property) {
+                return i;
+            }
+        }
+        // Not a tab at all: fall back to the default rather than an index nothing can render.
+        return 0;
+    }
 
     @NonNull
     public static Intent getIntent(@NonNull Context context, @NonNull String packageName, @UserIdInt int userId) {
